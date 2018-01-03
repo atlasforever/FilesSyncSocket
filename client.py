@@ -11,7 +11,13 @@ def dir_ctrl(finfo, repo):
 	if finfo["method"] == "delete":
 		shutil.rmtree(path, ignore_errors=True)	# remove the whole directory
 	elif finfo["method"] == "update":
-		
+		os.utime(path, (os.path.getatime(path), finfo["mtime"]))
+	elif finfo["method"] == "create":
+		try:
+			os.makedirs(path)
+		except OSError as e:
+			if e.error != errno.EEXIST:
+				raise
 
 
 srv_addr = input("Please input the server address\n")
@@ -31,5 +37,7 @@ with Socket(PUB) as s:
 
 	for finfo in diff:
 		if finfo["ftype"] == "directory":
-			if 		
+			dir_ctrl(finfo, repo)
+		elif finfo["ftype"] == "file":
+				
 
