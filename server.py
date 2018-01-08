@@ -53,26 +53,23 @@ port = input("Please input the port listening to\n")
 if not port.isdigit():
 	exit("Not a valid port number")
 
-host = ''
-with Socket(PUB) as s:
-	s.bind((host, int(port)))
-	s.listen(5)
-	conn, addr = s.accept()
+host = "tcp://127.0.0.1:50000"
+with Socket(PAIR) as s:
+	s.bind(host)
 	with conn:
 		print("Connected by", addr)
-		c_list = conn.recv()
+		c_list = s.recv()
 		c_list = c_list.decode()
 		diff = difflist(repo, c_list)
-		
+		s.send(json.dumps(diff))	
+
 		for finfo in diff:
-			finfo = json.dumps(finfo)
-			data = finfo.encode()
-			conn.send(data)
-			
 			if finfo["ftype"] == "file" &&
 					(finfo["method"] == "update" || 
 					 finfo["method"] == "create"):
 				path = os.path.join(repo, finfo["path"])
+				size = os.path.getsize(path)
+				s.send(size)
 				with open(path, "rb") as f:
 					l = f.read(1024)
 					while l:
