@@ -3,20 +3,29 @@
 import os
 import json
 import shutil
+import socket
+import struct
 from filesctrl import *
-from nanomsg import Socket, PAIR, PUB
 
 def file_ctrl(finfo, repo, sock):
 	path = os.path.join(repo, finfo["path"])
 	if finfo["method"] == "delete":
 		os.remove(path)
-	elif finfo["method"] == "update" || finfo["method"] == "create":
-		size = sock.recv()
-		n = 0
+	elif finfo["method"] == "update" or finfo["method"] == "create":
+		size = sock.recv(4)
+		size = struct.unpack("!1I", size)[0]
+		if not os.path.exists(os.path.dirname(path)):
+			try:
+				os.makedirs(os.path.dirname(path))
+			except OSError as e:
+				if e.error != errno.EEXIST:
+					raise
 		with open(path, "wb") as f:
+			n = 0
 			while n < size:
-				l = sock.recv()
+				l = sock.recv(1024)
 				f.write(l)
+				n = n + len(l)
 			os.utime(path, (os.path.getatime(path), finfo["mtime"]))
 
 
@@ -40,14 +49,15 @@ repo = input("Please input the REPO directory\n")
 if not os.path.isdir(repo):
 	exit("Not a valid directory")
 
-host = "tcp://127.0.0.1:50000"
-with Socket(PAIR) as s:
-	s.connect(host)
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+	s.connect((srv_addr, int(srv_port)))
 	files = json.dumps(filesinfo(repo))
 	files = files.encode()
-	s.send(files) # send client files list
+	s.sendall(files) # send client files list
 
-	diff = conn.recv()	# diff list
+	size = s.recv(4)
+	size = struct.unpack("!1I", size)[0]
+	diff = s.recv(size)	# diff list
 	diff = json.loads(diff.decode())
 
 	for finfo in diff:
@@ -55,5 +65,3 @@ with Socket(PAIR) as s:
 			dir_ctrl(finfo, repo)
 		elif finfo["ftype"] == "file":
 			file_ctrl(finfo, repo, s)
-					
-

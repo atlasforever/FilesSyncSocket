@@ -1,8 +1,9 @@
 #!/usr/bin/python3
 import os
 import json
+import socket
+import struct
 from filesctrl import *
-from nanomsg import Socket, PAIR, PUB
 
 def difflist(repo, c_list):
 	c_list = json.loads(c_list)
@@ -38,8 +39,8 @@ def difflist(repo, c_list):
 	for c_file in c_list:
 		if c_file != 0:
 			item = dict(path = c_file["path"],
-						mtime = s_file["mtime"],
-						ftype = s_file["ftype"],
+						mtime = c_file["mtime"],
+						ftype = c_file["ftype"],
 						method = "delete")
 			dlist.append(item)
 	return dlist
@@ -53,27 +54,30 @@ port = input("Please input the port listening to\n")
 if not port.isdigit():
 	exit("Not a valid port number")
 
-host = "tcp://127.0.0.1:50000"
-with Socket(PAIR) as s:
-	s.bind(host)
+host = ""
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+	s.bind((host, int(port)))
+	s.listen(1)
+	conn, addr = s.accept()
 	with conn:
 		print("Connected by", addr)
-		c_list = s.recv()
+		c_list = conn.recv(4096)
 		c_list = c_list.decode()
 		diff = difflist(repo, c_list)
-		s.send(json.dumps(diff))	
+		rawdiff = json.dumps(diff).encode()
+		size = struct.pack("!1I", len(rawdiff))
+		conn.sendall(size)
+		conn.sendall(rawdiff)
 
 		for finfo in diff:
-			if finfo["ftype"] == "file" &&
-					(finfo["method"] == "update" || 
-					 finfo["method"] == "create"):
+			if finfo["ftype"] == "file" and (finfo["method"] == "update"
+				 		 or finfo["method"] == "create"):
 				path = os.path.join(repo, finfo["path"])
 				size = os.path.getsize(path)
-				s.send(size)
+				size = struct.pack("!1I", size)
+				conn.sendall(size)
 				with open(path, "rb") as f:
 					l = f.read(1024)
 					while l:
-						conn.send(l)
+						conn.sendall(l)
 						l = f.read(1024)
-					
-					
